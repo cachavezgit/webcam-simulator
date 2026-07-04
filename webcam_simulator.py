@@ -5,6 +5,13 @@ import argparse
 import time
 
 import cv2
+import numpy as np
+
+# pyfakewebcam calls ndarray.tostring(), removed in NumPy 2.0; restore it as an
+# alias for tobytes() so the unmaintained library keeps working.
+if not hasattr(np.ndarray, "tostring"):
+    np.ndarray.tostring = np.ndarray.tobytes
+
 import pyfakewebcam
 
 
