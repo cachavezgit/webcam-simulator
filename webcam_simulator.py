@@ -6,27 +6,41 @@ import os
 import time
 
 import cv2
-import numpy as np
 import pyfakewebcam
-import pyfakewebcam.pyfakewebcam as _pyfakewebcam_impl
 
 
-class _OsCompat:
-    """Proxies the stdlib os module but rewrites write() so pyfakewebcam's
-    ndarray.tostring() call (removed in NumPy 2.0) works via tobytes() instead.
-    Only pyfakewebcam's internal `os` reference is replaced; the real os
-    module used elsewhere is untouched."""
+def _schedule_frame_compat(self, frame):
+    """Copy of pyfakewebcam.FakeWebcam.schedule_frame using tobytes() instead
+    of the ndarray.tostring() call, which NumPy 2.0 removed. The upstream
+    project is unmaintained, so this patches around it instead of pinning an
+    old NumPy (which has no prebuilt wheel for recent Python versions)."""
+    if frame.shape[0] != self._settings.fmt.pix.height:
+        raise Exception(
+            f"frame height does not match the height of webcam device: "
+            f"{self._settings.fmt.pix.height}!={frame.shape[0]}"
+        )
+    if frame.shape[1] != self._settings.fmt.pix.width:
+        raise Exception(
+            f"frame width does not match the width of webcam device: "
+            f"{self._settings.fmt.pix.width}!={frame.shape[1]}"
+        )
+    if frame.shape[2] != self._channels:
+        raise Exception(
+            f"num frame channels does not match the num channels of webcam device: "
+            f"{self._channels}!={frame.shape[2]}"
+        )
 
-    def __getattr__(self, name):
-        return getattr(os, name)
+    self._yuv = cv2.cvtColor(frame, cv2.COLOR_RGB2YUV)
 
-    def write(self, fd, data):
-        if isinstance(data, np.ndarray):
-            data = data.tobytes()
-        return os.write(fd, data)
+    for i in range(self._settings.fmt.pix.height):
+        self._buffer[i, ::2] = self._yuv[i, :, 0]
+        self._buffer[i, 1::4] = self._yuv[i, ::2, 1]
+        self._buffer[i, 3::4] = self._yuv[i, ::2, 2]
+
+    os.write(self._video_device, self._buffer.tobytes())
 
 
-_pyfakewebcam_impl.os = _OsCompat()
+pyfakewebcam.FakeWebcam.schedule_frame = _schedule_frame_compat
 
 
 def parse_args() -> argparse.Namespace:
