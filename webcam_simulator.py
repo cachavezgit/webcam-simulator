@@ -2,17 +2,31 @@
 """Loop a video file into a v4l2loopback virtual webcam device."""
 
 import argparse
+import os
 import time
 
 import cv2
 import numpy as np
-
-# pyfakewebcam calls ndarray.tostring(), removed in NumPy 2.0; restore it as an
-# alias for tobytes() so the unmaintained library keeps working.
-if not hasattr(np.ndarray, "tostring"):
-    np.ndarray.tostring = np.ndarray.tobytes
-
 import pyfakewebcam
+import pyfakewebcam.pyfakewebcam as _pyfakewebcam_impl
+
+
+class _OsCompat:
+    """Proxies the stdlib os module but rewrites write() so pyfakewebcam's
+    ndarray.tostring() call (removed in NumPy 2.0) works via tobytes() instead.
+    Only pyfakewebcam's internal `os` reference is replaced; the real os
+    module used elsewhere is untouched."""
+
+    def __getattr__(self, name):
+        return getattr(os, name)
+
+    def write(self, fd, data):
+        if isinstance(data, np.ndarray):
+            data = data.tobytes()
+        return os.write(fd, data)
+
+
+_pyfakewebcam_impl.os = _OsCompat()
 
 
 def parse_args() -> argparse.Namespace:
